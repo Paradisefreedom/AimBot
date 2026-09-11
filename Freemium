@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -10,178 +11,327 @@ local playerGui = player:WaitForChild("PlayerGui")
 local state = {
     AimEnabled = false,
     TargetLock = false,
-    FOV = 150, -- Increased default so it's easier to see
-    Smoothness = 0.2, -- 1 is instant snap, 0.1 is very smooth
+    AutoShoot = false,
+    ShowFOV = true,
+    FOV = 150,
+    Smoothness = 0.2,
     AimKeybind = Enum.KeyCode.E,
+    MenuKeybind = Enum.KeyCode.RightShift,
     IsBinding = false
 }
 
 local aiming = false
 local currentTarget = nil
+local lastShootTime = 0
+local shootCooldown = 0.1 -- Adjust for fire rate (0.1 = 10 clicks per sec)
 
--- Create Main GUI
+-- Accent Color Theme (Electric Blue)
+local accentColor = Color3.fromRGB(0, 120, 255)
+local bgDark = Color3.fromRGB(20, 20, 20)
+local bgLight = Color3.fromRGB(35, 35, 35)
+local textCol = Color3.fromRGB(240, 240, 240)
+local textDim = Color3.fromRGB(150, 150, 150)
+
+-- --- UI CONSTRUCTION --- --
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "TestingUI"
+screenGui.Name = "ModernTestingUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 
--- Create FOV Circle (Visualizer)
+-- FOV Circle Visualizer
 local fovCircle = Instance.new("Frame")
 fovCircle.Name = "FOVCircle"
 fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-fovCircle.BackgroundTransparency = 0.8
+fovCircle.BackgroundTransparency = 1 -- Hide fill
 fovCircle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-fovCircle.BorderSizePixel = 1
-fovCircle.BorderColor3 = Color3.fromRGB(255, 0, 0)
-fovCircle.Visible = false
+fovCircle.BorderSizePixel = 0
+fovCircle.Visible = state.ShowFOV
 fovCircle.Parent = screenGui
 
+local fovStroke = Instance.new("UIStroke")
+fovStroke.Color = accentColor
+fovStroke.Thickness = 1.5
+fovStroke.Transparency = 0.5
+fovStroke.Parent = fovCircle
+
 local fovCorner = Instance.new("UICorner")
-fovCorner.CornerRadius = UDim.new(1, 0) -- Makes it a perfect circle
+fovCorner.CornerRadius = UDim.new(1, 0)
 fovCorner.Parent = fovCircle
 
+-- Main Menu Frame
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 250, 0, 320)
-mainFrame.Position = UDim2.new(0.5, -125, 0.5, -160)
-mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+mainFrame.Size = UDim2.new(0, 280, 0, 420)
+mainFrame.Position = UDim2.new(0.5, -140, 0.5, -210)
+mainFrame.BackgroundColor3 = bgDark
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = screenGui
 mainFrame.Active = true
 mainFrame.Draggable = true
+mainFrame.ClipsDescendants = true
 
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 8)
-corner.Parent = mainFrame
+local dropShadow = Instance.new("UIStroke")
+dropShadow.Color = Color3.fromRGB(0,0,0)
+dropShadow.Thickness = 2
+dropShadow.Transparency = 0.7
+dropShadow.Parent = mainFrame
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 8)
+mainCorner.Parent = mainFrame
+
+-- Header
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, 0, 0, 40)
+header.BackgroundColor3 = bgLight
+header.BorderSizePixel = 0
+header.Parent = mainFrame
+
+local headerCorner = Instance.new("UICorner")
+headerCorner.CornerRadius = UDim.new(0, 8)
+headerCorner.Parent = header
+
+-- Fix bottom corners of header to blend with main body
+local headerFix = Instance.new("Frame")
+headerFix.Size = UDim2.new(1, 0, 0, 10)
+headerFix.Position = UDim2.new(0, 0, 1, -10)
+headerFix.BackgroundColor3 = bgLight
+headerFix.BorderSizePixel = 0
+headerFix.Parent = header
 
 local title = Instance.new("TextLabel")
-title.Name = "Title"
-title.Size = UDim2.new(1, 0, 0, 40)
+title.Size = UDim2.new(1, -30, 1, 0)
+title.Position = UDim2.new(0, 15, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "TESTING ENVIRONMENT"
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Text = "MODERN ENV"
+title.TextColor3 = accentColor
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
-title.Parent = mainFrame
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = header
 
-local layout = Instance.new("UIListLayout")
-layout.Parent = mainFrame
-layout.SortOrder = Enum.SortOrder.LayoutOrder
-layout.Padding = UDim.new(0, 10)
-layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+-- Scroll Frame for Content
+local contentLayout = Instance.new("ScrollingFrame")
+contentLayout.Size = UDim2.new(1, 0, 1, -50)
+contentLayout.Position = UDim2.new(0, 0, 0, 50)
+contentLayout.BackgroundTransparency = 1
+contentLayout.ScrollBarThickness = 2
+contentLayout.ScrollBarImageColor3 = accentColor
+contentLayout.CanvasSize = UDim2.new(0, 0, 0, 0)
+contentLayout.AutomaticCanvasSize = Enum.AutomaticSize.Y
+contentLayout.Parent = mainFrame
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.Parent = contentLayout
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout.Padding = UDim.new(0, 8)
+listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
 local padding = Instance.new("UIPadding")
-padding.Parent = mainFrame
-padding.PaddingTop = UDim.new(0, 45)
+padding.Parent = contentLayout
+padding.PaddingTop = UDim.new(0, 5)
+padding.PaddingBottom = UDim.new(0, 15)
 
--- UI Helper Functions
-local function createToggle(text, stateKey, callback)
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(0, 220, 0, 35)
-    button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    button.Text = text .. " : OFF"
-    button.TextColor3 = Color3.fromRGB(200, 200, 200)
-    button.Font = Enum.Font.GothamSemibold
-    button.TextSize = 13
-    button.AutoButtonColor = false
-    
-    local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0, 6)
-    btnCorner.Parent = button
+-- --- UI COMPONENTS --- --
 
-    button.MouseButton1Click:Connect(function()
-        state[stateKey] = not state[stateKey]
-        if state[stateKey] then
-            button.BackgroundColor3 = Color3.fromRGB(0, 170, 100)
-            button.Text = text .. " : ON"
-            button.TextColor3 = Color3.fromRGB(255, 255, 255)
-        else
-            button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            button.Text = text .. " : OFF"
-            button.TextColor3 = Color3.fromRGB(200, 200, 200)
-        end
-        if callback then callback(state[stateKey]) end
-    end)
-    return button
-end
-
-local function createInput(text, stateKey, defaultValue)
+-- Animated Toggle Switch
+local function createToggle(name, stateKey, callback)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 220, 0, 35)
-    frame.BackgroundTransparency = 1
-    
+    frame.Size = UDim2.new(0, 250, 0, 35)
+    frame.BackgroundColor3 = bgLight
+    frame.Parent = contentLayout
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
+
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(0.5, 0, 1, 0)
+    label.Size = UDim2.new(0.7, 0, 1, 0)
+    label.Position = UDim2.new(0, 10, 0, 0)
     label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextColor3 = Color3.fromRGB(200, 200, 200)
+    label.Text = name
+    label.TextColor3 = textCol
     label.Font = Enum.Font.GothamSemibold
     label.TextSize = 13
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = frame
-    
-    local box = Instance.new("TextBox")
-    box.Size = UDim2.new(0.5, 0, 1, 0)
-    box.Position = UDim2.new(0.5, 0, 0, 0)
-    box.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    box.Text = tostring(defaultValue)
-    box.TextColor3 = Color3.fromRGB(255, 255, 255)
-    box.Font = Enum.Font.Gotham
-    box.TextSize = 13
-    box.Parent = frame
-    
-    local boxCorner = Instance.new("UICorner")
-    boxCorner.CornerRadius = UDim.new(0, 6)
-    boxCorner.Parent = box
-    
-    box.FocusLost:Connect(function()
-        local num = tonumber(box.Text)
-        if num then
-            state[stateKey] = num
+
+    local toggleBg = Instance.new("TextButton")
+    toggleBg.Size = UDim2.new(0, 40, 0, 20)
+    toggleBg.Position = UDim2.new(1, -50, 0.5, -10)
+    toggleBg.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    toggleBg.Text = ""
+    toggleBg.AutoButtonColor = false
+    toggleBg.Parent = frame
+    Instance.new("UICorner", toggleBg).CornerRadius = UDim.new(1, 0)
+
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 16, 0, 16)
+    knob.Position = UDim2.new(0, 2, 0.5, -8)
+    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    knob.Parent = toggleBg
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+    local function updateVisuals(isSetup)
+        local targetColor = state[stateKey] and accentColor or Color3.fromRGB(60, 60, 60)
+        local targetPos = state[stateKey] and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+        
+        if isSetup then
+            toggleBg.BackgroundColor3 = targetColor
+            knob.Position = targetPos
         else
-            box.Text = tostring(state[stateKey])
+            TweenService:Create(toggleBg, TweenInfo.new(0.2), {BackgroundColor3 = targetColor}):Play()
+            TweenService:Create(knob, TweenInfo.new(0.2, Enum.EasingStyle.Back), {Position = targetPos}):Play()
         end
+    end
+    updateVisuals(true)
+
+    toggleBg.MouseButton1Click:Connect(function()
+        state[stateKey] = not state[stateKey]
+        updateVisuals(false)
+        if callback then callback(state[stateKey]) end
     end)
-    return frame
 end
 
--- Create the UI Elements
-local toggleAim = createToggle("Main Toggle", "AimEnabled", function(enabled)
-    fovCircle.Visible = enabled
-end)
-toggleAim.Parent = mainFrame
+-- Draggable Slider Component
+local function createSlider(name, stateKey, min, max, isFloat, callback)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 250, 0, 50)
+    frame.BackgroundColor3 = bgLight
+    frame.Parent = contentLayout
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
 
-local fovInput = createInput("FOV Radius", "FOV", state.FOV)
-fovInput.Parent = mainFrame
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -20, 0, 20)
+    label.Position = UDim2.new(0, 10, 0, 5)
+    label.BackgroundTransparency = 1
+    label.Text = name
+    label.TextColor3 = textCol
+    label.Font = Enum.Font.GothamSemibold
+    label.TextSize = 13
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = frame
 
-local smoothInput = createInput("Smoothness", "Smoothness", state.Smoothness)
-smoothInput.Parent = mainFrame
+    local valueLabel = Instance.new("TextLabel")
+    valueLabel.Size = UDim2.new(0, 50, 0, 20)
+    valueLabel.Position = UDim2.new(1, -60, 0, 5)
+    valueLabel.BackgroundTransparency = 1
+    valueLabel.Text = tostring(state[stateKey])
+    valueLabel.TextColor3 = accentColor
+    valueLabel.Font = Enum.Font.GothamBold
+    valueLabel.TextSize = 13
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+    valueLabel.Parent = frame
 
-local targetLockToggle = createToggle("Target Lock", "TargetLock")
-targetLockToggle.Parent = mainFrame
+    local sliderBg = Instance.new("TextButton")
+    sliderBg.Size = UDim2.new(1, -20, 0, 6)
+    sliderBg.Position = UDim2.new(0, 10, 1, -15)
+    sliderBg.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    sliderBg.Text = ""
+    sliderBg.AutoButtonColor = false
+    sliderBg.Parent = frame
+    Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(1, 0)
 
-local keybindBtn = Instance.new("TextButton")
-keybindBtn.Size = UDim2.new(0, 220, 0, 35)
-keybindBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-keybindBtn.Text = "Aim Keybind : " .. state.AimKeybind.Name
-keybindBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-keybindBtn.Font = Enum.Font.GothamSemibold
-keybindBtn.TextSize = 13
-keybindBtn.Parent = mainFrame
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new(0, 0, 1, 0) -- Set dynamically
+    fill.BackgroundColor3 = accentColor
+    fill.Parent = sliderBg
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
 
-local kbCorner = Instance.new("UICorner")
-kbCorner.CornerRadius = UDim.new(0, 6)
-kbCorner.Parent = keybindBtn
+    -- Initial fill size
+    local percent = (state[stateKey] - min) / (max - min)
+    fill.Size = UDim2.new(percent, 0, 1, 0)
 
-keybindBtn.MouseButton1Click:Connect(function()
-    state.IsBinding = true
-    keybindBtn.Text = "Press any key..."
-    keybindBtn.TextColor3 = Color3.fromRGB(255, 200, 0)
-end)
+    local dragging = false
 
--- --- AIMBOT BACKEND LOGIC --- --
+    local function updateSlider(input)
+        local pos = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+        fill.Size = UDim2.new(pos, 0, 1, 0)
+        
+        local val = min + ((max - min) * pos)
+        if not isFloat then val = math.floor(val) else val = math.floor(val * 100) / 100 end
+        
+        state[stateKey] = val
+        valueLabel.Text = tostring(val)
+        if callback then callback(val) end
+    end
 
--- Function to find the closest player to the mouse inside the FOV
+    sliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            updateSlider(input)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            updateSlider(input)
+        end
+    end)
+end
+
+-- Keybind Component
+local function createKeybind(name, stateKey)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 250, 0, 35)
+    frame.BackgroundColor3 = bgLight
+    frame.Parent = contentLayout
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.6, 0, 1, 0)
+    label.Position = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = name
+    label.TextColor3 = textCol
+    label.Font = Enum.Font.GothamSemibold
+    label.TextSize = 13
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = frame
+
+    local bindBtn = Instance.new("TextButton")
+    bindBtn.Size = UDim2.new(0, 80, 0, 25)
+    bindBtn.Position = UDim2.new(1, -90, 0.5, -12.5)
+    bindBtn.BackgroundColor3 = bgDark
+    bindBtn.Text = state[stateKey].Name
+    bindBtn.TextColor3 = accentColor
+    bindBtn.Font = Enum.Font.GothamBold
+    bindBtn.TextSize = 12
+    bindBtn.AutoButtonColor = false
+    bindBtn.Parent = frame
+    Instance.new("UICorner", bindBtn).CornerRadius = UDim.new(0, 4)
+
+    bindBtn.MouseButton1Click:Connect(function()
+        state.IsBinding = true
+        bindBtn.Text = "..."
+        bindBtn.TextColor3 = Color3.fromRGB(255, 200, 0)
+    end)
+
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if state.IsBinding and input.UserInputType == Enum.UserInputType.Keyboard then
+            state[stateKey] = input.KeyCode
+            state.IsBinding = false
+            bindBtn.Text = state[stateKey].Name
+            bindBtn.TextColor3 = accentColor
+        end
+    end)
+end
+
+-- Initialize the specific UI items
+createToggle("Main Aim Toggle", "AimEnabled")
+createToggle("Target Lock", "TargetLock")
+createToggle("Auto Shoot", "AutoShoot")
+createToggle("Show FOV Circle", "ShowFOV", function(val) fovCircle.Visible = val end)
+createSlider("FOV Radius", "FOV", 10, 500, false, function(val) fovCircle.Size = UDim2.new(0, val*2, 0, val*2) end)
+createSlider("Aim Smoothness", "Smoothness", 0.01, 1, true)
+createKeybind("Aim Keybind", "AimKeybind")
+
+
+-- --- AIMBOT & AUTO SHOOT LOGIC --- --
+
 local function getClosestPlayerInFOV()
     local mousePos = UserInputService:GetMouseLocation()
     local closestDist = state.FOV
@@ -194,11 +344,12 @@ local function getClosestPlayerInFOV()
                 local screenPos, onScreen = camera:WorldToViewportPoint(hrp.Position)
 
                 if onScreen then
-                    -- Calculate distance from mouse to target's screen position
                     local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                    if dist < closestDist then
-                        closestDist = dist
-                        closestPlr = targetPlr
+                    if dist <= state.FOV then
+                        if dist < closestDist then
+                            closestDist = dist
+                            closestPlr = targetPlr
+                        end
                     end
                 end
             end
@@ -207,14 +358,16 @@ local function getClosestPlayerInFOV()
     return closestPlr
 end
 
--- Listen for keybind presses (Hold to aim)
+-- Trigger Aim via Keybind
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if state.IsBinding and input.UserInputType == Enum.UserInputType.Keyboard then
-        state.AimKeybind = input.KeyCode
-        state.IsBinding = false
-        keybindBtn.Text = "Aim Keybind : " .. state.AimKeybind.Name
-        keybindBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-    elseif not gameProcessed then
+    if state.IsBinding then return end
+
+    -- Hide/Show UI Menu Keybind
+    if input.KeyCode == state.MenuKeybind then
+        mainFrame.Visible = not mainFrame.Visible
+    end
+
+    if not gameProcessed then
         if input.KeyCode == state.AimKeybind and state.AimEnabled then
             aiming = true
             if state.TargetLock then
@@ -231,41 +384,55 @@ UserInputService.InputEnded:Connect(function(input, gameProcessed)
     end
 end)
 
--- The actual aim loop that updates camera position
+-- Main Loop
 RunService.RenderStepped:Connect(function()
-    -- Update FOV Circle position and size dynamically
-    if state.AimEnabled then
+    -- Dynamic FOV Circle update
+    if state.AimEnabled and state.ShowFOV then
         local mousePos = UserInputService:GetMouseLocation()
         fovCircle.Position = UDim2.new(0, mousePos.X, 0, mousePos.Y)
-        fovCircle.Size = UDim2.new(0, state.FOV * 2, 0, state.FOV * 2)
     end
 
     if state.AimEnabled and aiming then
         local targetToAimAt = nil
 
         if state.TargetLock then
-            -- Verify if the locked target is still alive and has a RootPart
             if currentTarget and currentTarget.Character and currentTarget.Character:FindFirstChild("HumanoidRootPart") and currentTarget.Character.Humanoid.Health > 0 then
                 targetToAimAt = currentTarget
             else
-                currentTarget = getClosestPlayerInFOV() -- Find a new one if old one dies
+                currentTarget = getClosestPlayerInFOV()
                 targetToAimAt = currentTarget
             end
         else
-            -- Continuously update to whoever is closest in FOV
             targetToAimAt = getClosestPlayerInFOV()
         end
 
-        -- Move the camera
         if targetToAimAt then
             local targetHRP = targetToAimAt.Character.HumanoidRootPart
-            -- Calculate the exact CFrame looking at the HumanoidRootPart
             local targetCameraCFrame = CFrame.new(camera.CFrame.Position, targetHRP.Position)
-            
-            -- Apply Smoothness using Lerp
-            -- state.Smoothness clamped between 0 and 1 so it doesn't break
             local smoothFactor = math.clamp(state.Smoothness, 0.01, 1) 
+            
             camera.CFrame = camera.CFrame:Lerp(targetCameraCFrame, smoothFactor)
+
+            -- Auto Shoot Logic execution
+            if state.AutoShoot then
+                if tick() - lastShootTime >= shootCooldown then
+                    lastShootTime = tick()
+                    
+                    -- If testing in standard executor environment:
+                    if mouse1click then
+                        mouse1click()
+                    else
+                        -- Safe Fallback for Roblox Studio standard testing:
+                        -- Automatically activates whatever tool your character is holding
+                        if player.Character then
+                            local tool = player.Character:FindFirstChildOfClass("Tool")
+                            if tool then
+                                tool:Activate()
+                            end
+                        end
+                    end
+                end
+            end
         end
     end
 end)
