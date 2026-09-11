@@ -1,1 +1,384 @@
+-- Key System with Expiration & Premium/Free Loadstrings
+-- Get Key -> Hypex SellAuth link
 
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+local PlayerGui = player:WaitForChild("PlayerGui")
+
+-- ============ CONFIGURATION ============
+local KEY_LINK = "https://hypex-sl.mysellauth.com/product/hypex-lifetime"
+
+local EXPIRY_TIMES = {
+    ["1day"]   = 86400,      -- 1 day
+    ["7days"]  = 604800,     -- 7 days
+    ["1month"] = 2592000,    -- 30 days
+    ["never"]  = math.huge   -- never expires
+}
+
+-- ============ KEY DATABASE ============
+-- NOTE: If a key appears twice, the LAST entry wins.
+local KEY_DATABASE = {
+    -- ===== 1 DAY KEYS =====
+    ["key_czsv048$"]            = "1day",
+    ["key_PsOop52pFac?"]        = "1day",
+    ["key_sGHHcV2j"]            = "1day",
+    ["key_gRvVXvi1F2ct9vmC!"]   = "1day",
+    ["key_GUnaoue7h?"]          = "1day",
+
+    -- ===== 7 DAY KEYS =====
+    ["R?v$e2"]  = "7days",
+    ["J$u!p4"]  = "7days",
+    ["W!s$h7"]  = "7days",
+    ["$l!M_e"]  = "7days",
+    ["Z?n$k3"]  = "7days",
+    ["P$a!n5"]  = "7days",
+    ["D!v$e8"]  = "7days",
+    ["$p!N_9"]  = "7days",
+
+    -- ===== 1 MONTH KEYS =====
+    ["K7?m$b"]  = "1month",
+    ["!nD$eX"]  = "1month",
+    ["F?r$t1"]  = "1month",
+    ["C$a!m9"]  = "1month",
+    ["V!r$u5"]  = "1month",
+    ["$m!L_e"]  = "1month",
+    ["T?r$k4"]  = "1month",
+    ["P!n$h2"]  = "1month",
+    ["$w!F_t"]  = "1month",
+    ["G?a$p3"]  = "1month",
+    ["B$o!t8"]  = "1month",
+    ["M!n$d6"]  = "1month",
+    ["$c!O_p"]  = "1month",
+    ["H?n$t5"]  = "1month",
+    ["F!l$m9"]  = "1month",
+    ["$k!P_1"]  = "1month",
+    ["$O!p_4"]  = "1month",
+
+    -- ===== NEVER EXPIRE KEYS (placed last to override duplicates) =====
+    ["Q?i$k1"]  = "never",
+    ["L$o!g2"]  = "never",
+    ["T!m$e6"]  = "never",
+    ["$f!L_3"]  = "never",
+    ["N?r$d7"]  = "never",
+    ["V$a!s4"]  = "never",
+    ["C!o$d9"]  = "never",
+    ["$g!R_w"]  = "never",
+    ["K?p$t2"]  = "never",
+    ["B$e!t5"]  = "never",
+    ["X!y$o1"]  = "never",
+    ["$s!T_7"]  = "never",
+    ["M?r$k8"]  = "never",
+    ["F$a!r3"]  = "never",
+    ["P!o$t4"]  = "never",
+    ["$b!A_s"]  = "never",
+    ["W?r$m6"]  = "never",
+    ["L$i!m9"]  = "never",
+    ["H!n$t2"]  = "never",
+    ["$z!P_5"]  = "never",
+    ["V?c$t1"]  = "never",
+    ["R$o!s8"]  = "never",
+    ["J!u$g3"]  = "never",
+    ["$d!R_e"]  = "never",
+}
+
+-- ============ KEY STORAGE ============
+local ActivatedKeys = {}
+
+local function loadActivatedKeys()
+    if writefile and readfile and isfile then
+        if isfile("keysystem_data.json") then
+            local success, data = pcall(function()
+                return game:GetService("HttpService"):JSONDecode(readfile("keysystem_data.json"))
+            end)
+            if success and data then
+                ActivatedKeys = data
+            end
+        end
+    end
+end
+
+local function saveActivatedKeys()
+    if writefile then
+        pcall(function()
+            writefile("keysystem_data.json", game:GetService("HttpService"):JSONEncode(ActivatedKeys))
+        end)
+    end
+end
+
+-- ============ KEY VALIDATION ============
+local function validateKey(inputKey)
+    local keyInfo = KEY_DATABASE[inputKey]
+
+    if not keyInfo then
+        return false, "Invalid key."
+    end
+
+    if keyInfo == "never" then
+        return true, "Key accepted (never expires)."
+    end
+
+    local activationTime = ActivatedKeys[inputKey]
+
+    if activationTime then
+        local elapsed = os.time() - activationTime
+        if elapsed >= EXPIRY_TIMES[keyInfo] then
+            return false, "Key has expired."
+        end
+        return true, "Key still valid."
+    else
+        ActivatedKeys[inputKey] = os.time()
+        saveActivatedKeys()
+        return true, "Key activated successfully!"
+    end
+end
+
+-- ============ OPEN URL HELPER ============
+local function openKeyLink()
+    -- Try known executor methods to open a browser
+    local opened = false
+
+    -- Some executors expose these
+    for _, fn in ipairs({
+        function() return request and request({Url = KEY_LINK, Method = "GET"}) end,
+        function() return http_request and http_request({Url = KEY_LINK, Method = "GET"}) end,
+        function() return syn and syn.request and syn.request({Url = KEY_LINK, Method = "GET"}) end,
+    }) do
+        local ok = pcall(fn)
+        if ok then opened = true break end
+    end
+
+    -- Always copy to clipboard as a reliable fallback
+    pcall(function() setclipboard(KEY_LINK) end)
+
+    return opened
+end
+
+-- ============ GUI CREATION ============
+local function createKeyUI()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "KeySystemGui"
+    screenGui.ResetOnSpawn = false
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    screenGui.Parent = PlayerGui
+
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "MainFrame"
+    mainFrame.Size = UDim2.new(0, 320, 0, 330)
+    mainFrame.Position = UDim2.new(0.5, -160, 0.5, -165)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Active = true
+    mainFrame.Draggable = true
+    mainFrame.Parent = screenGui
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = mainFrame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(45, 45, 55)
+    stroke.Thickness = 1
+    stroke.Parent = mainFrame
+
+    -- Title Bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 40)
+    titleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = mainFrame
+
+    local titleCorner = Instance.new("UICorner")
+    titleCorner.CornerRadius = UDim.new(0, 12)
+    titleCorner.Parent = titleBar
+
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Size = UDim2.new(1, -20, 1, 0)
+    titleLabel.Position = UDim2.new(0, 15, 0, 0)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Text = "KEY SYSTEM"
+    titleLabel.TextColor3 = Color3.fromRGB(230, 230, 240)
+    titleLabel.TextSize = 16
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.Parent = titleBar
+
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 30, 0, 30)
+    closeBtn.Position = UDim2.new(1, -38, 0, 5)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+    closeBtn.BackgroundTransparency = 0.5
+    closeBtn.Text = "✕"
+    closeBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+    closeBtn.TextSize = 14
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.Parent = titleBar
+
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 8)
+    closeCorner.Parent = closeBtn
+
+    closeBtn.MouseButton1Click:Connect(function() screenGui:Destroy() end)
+
+    -- Input Label
+    local inputLabel = Instance.new("TextLabel")
+    inputLabel.Size = UDim2.new(1, -40, 0, 20)
+    inputLabel.Position = UDim2.new(0, 20, 0, 55)
+    inputLabel.BackgroundTransparency = 1
+    inputLabel.Text = "Enter your key below:"
+    inputLabel.TextColor3 = Color3.fromRGB(160, 160, 175)
+    inputLabel.TextSize = 13
+    inputLabel.Font = Enum.Font.Gotham
+    inputLabel.TextXAlignment = Enum.TextXAlignment.Left
+    inputLabel.Parent = mainFrame
+
+    -- Key Input
+    local keyInput = Instance.new("TextBox")
+    keyInput.Size = UDim2.new(1, -40, 0, 40)
+    keyInput.Position = UDim2.new(0, 20, 0, 80)
+    keyInput.BackgroundColor3 = Color3.fromRGB(28, 28, 35)
+    keyInput.BorderSizePixel = 0
+    keyInput.Text = ""
+    keyInput.PlaceholderText = "Paste your key here..."
+    keyInput.PlaceholderColor3 = Color3.fromRGB(100, 100, 115)
+    keyInput.TextColor3 = Color3.fromRGB(220, 220, 235)
+    keyInput.TextSize = 13
+    keyInput.Font = Enum.Font.Gotham
+    keyInput.ClearTextOnFocus = false
+    keyInput.Parent = mainFrame
+
+    local inputCorner = Instance.new("UICorner")
+    inputCorner.CornerRadius = UDim.new(0, 8)
+    inputCorner.Parent = keyInput
+
+    local inputStroke = Instance.new("UIStroke")
+    inputStroke.Color = Color3.fromRGB(45, 45, 55)
+    inputStroke.Thickness = 1
+    inputStroke.Parent = keyInput
+
+    -- Status Label
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(1, -40, 0, 30)
+    statusLabel.Position = UDim2.new(0, 20, 0, 125)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Text = ""
+    statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+    statusLabel.TextSize = 12
+    statusLabel.Font = Enum.Font.Gotham
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    statusLabel.TextYAlignment = Enum.TextYAlignment.Top
+    statusLabel.TextWrapped = true
+    statusLabel.Parent = mainFrame
+
+    -- ENTER KEY
+    local enterBtn = Instance.new("TextButton")
+    enterBtn.Size = UDim2.new(1, -40, 0, 42)
+    enterBtn.Position = UDim2.new(0, 20, 0, 165)
+    enterBtn.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+    enterBtn.BorderSizePixel = 0
+    enterBtn.Text = "ENTER KEY"
+    enterBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    enterBtn.TextSize = 14
+    enterBtn.Font = Enum.Font.GothamBold
+    enterBtn.Parent = mainFrame
+
+    local enterCorner = Instance.new("UICorner")
+    enterCorner.CornerRadius = UDim.new(0, 8)
+    enterCorner.Parent = enterBtn
+
+    -- GET KEY
+    local getKeyBtn = Instance.new("TextButton")
+    getKeyBtn.Size = UDim2.new(1, -40, 0, 42)
+    getKeyBtn.Position = UDim2.new(0, 20, 0, 215)
+    getKeyBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+    getKeyBtn.BorderSizePixel = 0
+    getKeyBtn.Text = "GET KEY"
+    getKeyBtn.TextColor3 = Color3.fromRGB(200, 200, 215)
+    getKeyBtn.TextSize = 14
+    getKeyBtn.Font = Enum.Font.GothamBold
+    getKeyBtn.Parent = mainFrame
+
+    local getKeyCorner = Instance.new("UICorner")
+    getKeyCorner.CornerRadius = UDim.new(0, 8)
+    getKeyCorner.Parent = getKeyBtn
+
+    -- FREE
+    local freeBtn = Instance.new("TextButton")
+    freeBtn.Size = UDim2.new(1, -40, 0, 42)
+    freeBtn.Position = UDim2.new(0, 20, 0, 265)
+    freeBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
+    freeBtn.BorderSizePixel = 0
+    freeBtn.Text = "FREE"
+    freeBtn.TextColor3 = Color3.fromRGB(140, 140, 155)
+    freeBtn.TextSize = 14
+    freeBtn.Font = Enum.Font.GothamBold
+    freeBtn.Parent = mainFrame
+
+    local freeCorner = Instance.new("UICorner")
+    freeCorner.CornerRadius = UDim.new(0, 8)
+    freeCorner.Parent = freeBtn
+
+    -- ============ BUTTON LOGIC ============
+    enterBtn.MouseButton1Click:Connect(function()
+        local key = keyInput.Text:gsub("^%s+", ""):gsub("%s+$", "")
+
+        if key == "" then
+            statusLabel.Text = "Please enter a key."
+            statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+            return
+        end
+
+        local isValid, message = validateKey(key)
+
+        if isValid then
+            statusLabel.Text = message
+            statusLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
+            keyInput.Text = ""
+
+            task.wait(1)
+            screenGui:Destroy()
+
+            local success, err = pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/Paradisefreedom/AimBot/refs/heads/main/Premium"))()
+            end)
+            if not success then
+                warn("[KeySystem] Failed to load Premium: " .. tostring(err))
+            end
+        else
+            statusLabel.Text = message
+            statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+        end
+    end)
+
+    getKeyBtn.MouseButton1Click:Connect(function()
+        openKeyLink()
+        statusLabel.Text = "Link copied! Open it to buy your key:\n" .. KEY_LINK
+        statusLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+    end)
+
+    freeBtn.MouseButton1Click:Connect(function()
+        screenGui:Destroy()
+
+        local success, err = pcall(function()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/Paradisefreedom/AimBot/refs/heads/main/Freemium"))()
+        end)
+        if not success then
+            warn("[KeySystem] Failed to load Freemium: " .. tostring(err))
+        end
+    end)
+
+    -- Hover effects
+    local function addHover(button, normal, hover)
+        button.MouseEnter:Connect(function() button.BackgroundColor3 = hover end)
+        button.MouseLeave:Connect(function() button.BackgroundColor3 = normal end)
+    end
+    addHover(enterBtn, Color3.fromRGB(88, 101, 242), Color3.fromRGB(110, 120, 255))
+    addHover(getKeyBtn, Color3.fromRGB(40, 40, 48), Color3.fromRGB(50, 50, 60))
+    addHover(freeBtn, Color3.fromRGB(35, 35, 42), Color3.fromRGB(45, 45, 55))
+
+    statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+end
+
+-- ============ INIT ============
+loadActivatedKeys()
+createKeyUI()
