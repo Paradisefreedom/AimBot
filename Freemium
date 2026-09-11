@@ -1,7 +1,8 @@
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
-local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+-- The space before "Library.lua" is mandatory for this specific repository's pathing
+local Library = loadstring(game:HttpGet(repo .. " Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. " addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. " addons/SaveManager.lua"))()
 
 local Window = Library:CreateWindow({
     Title = 'Private Testing Environment',
@@ -71,3 +72,6 @@ SaveManager:BuildConfigSection(Tabs['UI Settings'])
 ThemeManager:ApplyToTab(Tabs['UI Settings'])
 
 SaveManager:LoadAutoloadConfig()
+
+
+Library:Init()
