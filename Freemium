@@ -3,23 +3,42 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- Configuration & State
 local state = {
     AimEnabled = false,
     TargetLock = false,
-    FOV = 90,
-    Smoothness = 0.5,
+    FOV = 150, -- Increased default so it's easier to see
+    Smoothness = 0.2, -- 1 is instant snap, 0.1 is very smooth
     AimKeybind = Enum.KeyCode.E,
     IsBinding = false
 }
+
+local aiming = false
+local currentTarget = nil
 
 -- Create Main GUI
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "TestingUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
+
+-- Create FOV Circle (Visualizer)
+local fovCircle = Instance.new("Frame")
+fovCircle.Name = "FOVCircle"
+fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+fovCircle.BackgroundTransparency = 0.8
+fovCircle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+fovCircle.BorderSizePixel = 1
+fovCircle.BorderColor3 = Color3.fromRGB(255, 0, 0)
+fovCircle.Visible = false
+fovCircle.Parent = screenGui
+
+local fovCorner = Instance.new("UICorner")
+fovCorner.CornerRadius = UDim.new(1, 0) -- Makes it a perfect circle
+fovCorner.Parent = fovCircle
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
@@ -29,7 +48,7 @@ mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = screenGui
 mainFrame.Active = true
-mainFrame.Draggable = true -- Makes the UI draggable
+mainFrame.Draggable = true
 
 local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 8)
@@ -55,8 +74,8 @@ local padding = Instance.new("UIPadding")
 padding.Parent = mainFrame
 padding.PaddingTop = UDim.new(0, 45)
 
--- Helper function to create Toggles
-local function createToggle(text, stateKey)
+-- UI Helper Functions
+local function createToggle(text, stateKey, callback)
     local button = Instance.new("TextButton")
     button.Size = UDim2.new(0, 220, 0, 35)
     button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
@@ -73,29 +92,26 @@ local function createToggle(text, stateKey)
     button.MouseButton1Click:Connect(function()
         state[stateKey] = not state[stateKey]
         if state[stateKey] then
-            button.BackgroundColor3 = Color3.fromRGB(0, 170, 100) -- Green
+            button.BackgroundColor3 = Color3.fromRGB(0, 170, 100)
             button.Text = text .. " : ON"
             button.TextColor3 = Color3.fromRGB(255, 255, 255)
         else
-            button.BackgroundColor3 = Color3.fromRGB(40, 40, 40) -- Dark Gray
+            button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
             button.Text = text .. " : OFF"
             button.TextColor3 = Color3.fromRGB(200, 200, 200)
         end
-        -- Add your backend toggle logic here
-        print(text .. " set to " .. tostring(state[stateKey]))
+        if callback then callback(state[stateKey]) end
     end)
-    
     return button
 end
 
--- Helper function to create Inputs (FOV, Smoothness)
 local function createInput(text, stateKey, defaultValue)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(0, 220, 0, 35)
     frame.BackgroundTransparency = 1
     
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(0.6, 0, 1, 0)
+    label.Size = UDim2.new(0.5, 0, 1, 0)
     label.BackgroundTransparency = 1
     label.Text = text
     label.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -105,8 +121,8 @@ local function createInput(text, stateKey, defaultValue)
     label.Parent = frame
     
     local box = Instance.new("TextBox")
-    box.Size = UDim2.new(0.4, 0, 1, 0)
-    box.Position = UDim2.new(0.6, 0, 0, 0)
+    box.Size = UDim2.new(0.5, 0, 1, 0)
+    box.Position = UDim2.new(0.5, 0, 0, 0)
     box.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     box.Text = tostring(defaultValue)
     box.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -122,18 +138,17 @@ local function createInput(text, stateKey, defaultValue)
         local num = tonumber(box.Text)
         if num then
             state[stateKey] = num
-            print(text .. " updated to: " .. num)
-            -- Add your backend value update logic here
         else
-            box.Text = tostring(state[stateKey]) -- Revert if invalid input
+            box.Text = tostring(state[stateKey])
         end
     end)
-    
     return frame
 end
 
 -- Create the UI Elements
-local toggleAim = createToggle("Main Toggle", "AimEnabled")
+local toggleAim = createToggle("Main Toggle", "AimEnabled", function(enabled)
+    fovCircle.Visible = enabled
+end)
 toggleAim.Parent = mainFrame
 
 local fovInput = createInput("FOV Radius", "FOV", state.FOV)
@@ -145,7 +160,6 @@ smoothInput.Parent = mainFrame
 local targetLockToggle = createToggle("Target Lock", "TargetLock")
 targetLockToggle.Parent = mainFrame
 
--- Keybind Button System
 local keybindBtn = Instance.new("TextButton")
 keybindBtn.Size = UDim2.new(0, 220, 0, 35)
 keybindBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
@@ -162,21 +176,96 @@ kbCorner.Parent = keybindBtn
 keybindBtn.MouseButton1Click:Connect(function()
     state.IsBinding = true
     keybindBtn.Text = "Press any key..."
-    keybindBtn.TextColor3 = Color3.fromRGB(255, 200, 0) -- Yellow when binding
+    keybindBtn.TextColor3 = Color3.fromRGB(255, 200, 0)
 end)
 
+-- --- AIMBOT BACKEND LOGIC --- --
+
+-- Function to find the closest player to the mouse inside the FOV
+local function getClosestPlayerInFOV()
+    local mousePos = UserInputService:GetMouseLocation()
+    local closestDist = state.FOV
+    local closestPlr = nil
+
+    for _, targetPlr in ipairs(Players:GetPlayers()) do
+        if targetPlr ~= player and targetPlr.Character and targetPlr.Character:FindFirstChild("HumanoidRootPart") and targetPlr.Character:FindFirstChild("Humanoid") then
+            if targetPlr.Character.Humanoid.Health > 0 then
+                local hrp = targetPlr.Character.HumanoidRootPart
+                local screenPos, onScreen = camera:WorldToViewportPoint(hrp.Position)
+
+                if onScreen then
+                    -- Calculate distance from mouse to target's screen position
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    if dist < closestDist then
+                        closestDist = dist
+                        closestPlr = targetPlr
+                    end
+                end
+            end
+        end
+    end
+    return closestPlr
+end
+
+-- Listen for keybind presses (Hold to aim)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if state.IsBinding and input.UserInputType == Enum.UserInputType.Keyboard then
         state.AimKeybind = input.KeyCode
         state.IsBinding = false
         keybindBtn.Text = "Aim Keybind : " .. state.AimKeybind.Name
         keybindBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-        print("Keybind set to: " .. state.AimKeybind.Name)
     elseif not gameProcessed then
-        -- Execute action if the bound key is pressed
         if input.KeyCode == state.AimKeybind and state.AimEnabled then
-            print("Aim keybind triggered!")
-            -- Add your actual activation logic here
+            aiming = true
+            if state.TargetLock then
+                currentTarget = getClosestPlayerInFOV()
+            end
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == state.AimKeybind then
+        aiming = false
+        currentTarget = nil
+    end
+end)
+
+-- The actual aim loop that updates camera position
+RunService.RenderStepped:Connect(function()
+    -- Update FOV Circle position and size dynamically
+    if state.AimEnabled then
+        local mousePos = UserInputService:GetMouseLocation()
+        fovCircle.Position = UDim2.new(0, mousePos.X, 0, mousePos.Y)
+        fovCircle.Size = UDim2.new(0, state.FOV * 2, 0, state.FOV * 2)
+    end
+
+    if state.AimEnabled and aiming then
+        local targetToAimAt = nil
+
+        if state.TargetLock then
+            -- Verify if the locked target is still alive and has a RootPart
+            if currentTarget and currentTarget.Character and currentTarget.Character:FindFirstChild("HumanoidRootPart") and currentTarget.Character.Humanoid.Health > 0 then
+                targetToAimAt = currentTarget
+            else
+                currentTarget = getClosestPlayerInFOV() -- Find a new one if old one dies
+                targetToAimAt = currentTarget
+            end
+        else
+            -- Continuously update to whoever is closest in FOV
+            targetToAimAt = getClosestPlayerInFOV()
+        end
+
+        -- Move the camera
+        if targetToAimAt then
+            local targetHRP = targetToAimAt.Character.HumanoidRootPart
+            -- Calculate the exact CFrame looking at the HumanoidRootPart
+            local targetCameraCFrame = CFrame.new(camera.CFrame.Position, targetHRP.Position)
+            
+            -- Apply Smoothness using Lerp
+            -- state.Smoothness clamped between 0 and 1 so it doesn't break
+            local smoothFactor = math.clamp(state.Smoothness, 0.01, 1) 
+            camera.CFrame = camera.CFrame:Lerp(targetCameraCFrame, smoothFactor)
         end
     end
 end)
