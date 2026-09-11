@@ -1,1 +1,73 @@
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
+local Window = Library:CreateWindow({
+    Title = 'Private Testing Environment',
+    Center = true,
+    AutoShow = true,
+    TabPadding = 8,
+    MenuFadeTime = 0.2
+})
+
+local Tabs = {
+    Main = Window:CreateTab('Main'),
+    ['UI Settings'] = Window:CreateTab('UI Settings'),
+}
+
+local AimGroupBox = Tabs.Main:CreateGroupBox('Aim Settings')
+
+
+AimGroupBox:AddToggle('AimToggle', {
+    Text = 'Enable Target Lock',
+    Default = false,
+    Tooltip = 'Toggles the camera lock onto targeted players',
+
+    Callback = function(Value)
+        print('[Aim System] Target Lock toggled:', Value)
+    end
+})
+
+
+AimGroupBox:AddSlider('FOVSlider', {
+    Text = 'Field of View (FOV)',
+    Default = 100,
+    Min = 10,
+    Max = 500,
+    Rounding = 0,
+    Compact = false,
+
+    Callback = function(Value)
+        print('[Aim System] FOV Radius updated to:', Value)
+    end
+})
+
+
+AimGroupBox:AddSlider('SmoothnessSlider', {
+    Text = 'Aim Smoothness',
+    Default = 5,
+    Min = 1,
+    Max = 20,
+    Rounding = 1,
+    Compact = false,
+
+    Callback = function(Value)
+        print('[Aim System] Smoothness factor updated to:', Value)
+    end
+})
+
+
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({ 'MenuKeybind' })
+
+ThemeManager:SetFolder('ObsidianPrivateTest')
+SaveManager:SetFolder('ObsidianPrivateTest/configs')
+
+SaveManager:BuildConfigSection(Tabs['UI Settings'])
+ThemeManager:ApplyToTab(Tabs['UI Settings'])
+
+SaveManager:LoadAutoloadConfig()
