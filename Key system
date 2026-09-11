@@ -10,15 +10,18 @@ local PlayerGui = player:WaitForChild("PlayerGui")
 local KEY_LINK = "https://hypex-sl.mysellauth.com/product/hypex-lifetime"
 
 local EXPIRY_TIMES = {
-    ["1day"]   = 86400,      -- 1 day
-    ["7days"]  = 604800,     -- 7 days
-    ["1month"] = 2592000,    -- 30 days
-    ["never"]  = math.huge   -- never expires
+    ["5sec"]   = 5,          -- test key
+    ["1day"]   = 86400,
+    ["7days"]  = 604800,
+    ["1month"] = 2592000,
+    ["never"]  = math.huge
 }
 
 -- ============ KEY DATABASE ============
--- NOTE: If a key appears twice, the LAST entry wins.
 local KEY_DATABASE = {
+    -- ===== TEST KEY (5 seconds) =====
+    ["TET5SEC"] = "5sec",
+
     -- ===== 1 DAY KEYS =====
     ["key_czsv048$"]            = "1day",
     ["key_PsOop52pFac?"]        = "1day",
@@ -55,7 +58,7 @@ local KEY_DATABASE = {
     ["$k!P_1"]  = "1month",
     ["$O!p_4"]  = "1month",
 
-    -- ===== NEVER EXPIRE KEYS (placed last to override duplicates) =====
+    -- ===== NEVER EXPIRE KEYS (last so they override duplicates) =====
     ["Q?i$k1"]  = "never",
     ["L$o!g2"]  = "never",
     ["T!m$e6"]  = "never",
@@ -135,10 +138,7 @@ end
 
 -- ============ OPEN URL HELPER ============
 local function openKeyLink()
-    -- Try known executor methods to open a browser
     local opened = false
-
-    -- Some executors expose these
     for _, fn in ipairs({
         function() return request and request({Url = KEY_LINK, Method = "GET"}) end,
         function() return http_request and http_request({Url = KEY_LINK, Method = "GET"}) end,
@@ -147,15 +147,54 @@ local function openKeyLink()
         local ok = pcall(fn)
         if ok then opened = true break end
     end
-
-    -- Always copy to clipboard as a reliable fallback
     pcall(function() setclipboard(KEY_LINK) end)
-
     return opened
 end
 
+-- ============ KICK PLAYER OUT OF SCRIPT ============
+local function kickPlayer()
+    -- Try to invoke any common unload function the Premium script may expose
+    local function tryCall(fn)
+        if type(fn) == "function" then pcall(fn) end
+    end
+
+    local env = (getgenv and getgenv()) or _G
+    for _, name in ipairs({"unload", "Unload", "UnloadScript", "unloadscript", "UnloadGUI", "unloadgui"}) do
+        tryCall(env[name])
+        tryCall(rawget(_G, name))
+    end
+
+    -- Flip common kill switches that scripts listen to
+    pcall(function()
+        if getgenv then
+            getgenv().ScriptEnabled = false
+            getgenv().Unloaded = true
+            getgenv().Running = false
+        end
+        _G.ScriptEnabled = false
+        _G.Unloaded = true
+        _G.Running = false
+    end)
+
+    -- Destroy every ScreenGui in PlayerGui (the premium GUI dies with it)
+    for _, gui in ipairs(PlayerGui:GetChildren()) do
+        if gui:IsA("ScreenGui") then
+            pcall(function() gui:Destroy() end)
+        end
+    end
+
+    -- Also clear BillboardGuis / SurfaceGuis the script may have made in workspace
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui") then
+            pcall(function() obj:Destroy() end)
+        end
+    end
+end
+
 -- ============ GUI CREATION ============
-local function createKeyUI()
+local createKeyUI  -- forward declare so kickPlayer can call it
+
+local function buildKeyUI(initialStatus, initialColor)
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "KeySystemGui"
     screenGui.ResetOnSpawn = false
@@ -181,7 +220,6 @@ local function createKeyUI()
     stroke.Thickness = 1
     stroke.Parent = mainFrame
 
-    -- Title Bar
     local titleBar = Instance.new("Frame")
     titleBar.Size = UDim2.new(1, 0, 0, 40)
     titleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
@@ -220,7 +258,6 @@ local function createKeyUI()
 
     closeBtn.MouseButton1Click:Connect(function() screenGui:Destroy() end)
 
-    -- Input Label
     local inputLabel = Instance.new("TextLabel")
     inputLabel.Size = UDim2.new(1, -40, 0, 20)
     inputLabel.Position = UDim2.new(0, 20, 0, 55)
@@ -232,7 +269,6 @@ local function createKeyUI()
     inputLabel.TextXAlignment = Enum.TextXAlignment.Left
     inputLabel.Parent = mainFrame
 
-    -- Key Input
     local keyInput = Instance.new("TextBox")
     keyInput.Size = UDim2.new(1, -40, 0, 40)
     keyInput.Position = UDim2.new(0, 20, 0, 80)
@@ -256,13 +292,12 @@ local function createKeyUI()
     inputStroke.Thickness = 1
     inputStroke.Parent = keyInput
 
-    -- Status Label
     local statusLabel = Instance.new("TextLabel")
     statusLabel.Size = UDim2.new(1, -40, 0, 30)
     statusLabel.Position = UDim2.new(0, 20, 0, 125)
     statusLabel.BackgroundTransparency = 1
-    statusLabel.Text = ""
-    statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+    statusLabel.Text = initialStatus or ""
+    statusLabel.TextColor3 = initialColor or Color3.fromRGB(255, 100, 100)
     statusLabel.TextSize = 12
     statusLabel.Font = Enum.Font.Gotham
     statusLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -270,7 +305,6 @@ local function createKeyUI()
     statusLabel.TextWrapped = true
     statusLabel.Parent = mainFrame
 
-    -- ENTER KEY
     local enterBtn = Instance.new("TextButton")
     enterBtn.Size = UDim2.new(1, -40, 0, 42)
     enterBtn.Position = UDim2.new(0, 20, 0, 165)
@@ -286,7 +320,6 @@ local function createKeyUI()
     enterCorner.CornerRadius = UDim.new(0, 8)
     enterCorner.Parent = enterBtn
 
-    -- GET KEY
     local getKeyBtn = Instance.new("TextButton")
     getKeyBtn.Size = UDim2.new(1, -40, 0, 42)
     getKeyBtn.Position = UDim2.new(0, 20, 0, 215)
@@ -302,7 +335,6 @@ local function createKeyUI()
     getKeyCorner.CornerRadius = UDim.new(0, 8)
     getKeyCorner.Parent = getKeyBtn
 
-    -- FREE
     local freeBtn = Instance.new("TextButton")
     freeBtn.Size = UDim2.new(1, -40, 0, 42)
     freeBtn.Position = UDim2.new(0, 20, 0, 265)
@@ -328,6 +360,7 @@ local function createKeyUI()
             return
         end
 
+        local isTestKey = (key == "TET5SEC")
         local isValid, message = validateKey(key)
 
         if isValid then
@@ -344,6 +377,15 @@ local function createKeyUI()
             if not success then
                 warn("[KeySystem] Failed to load Premium: " .. tostring(err))
             end
+
+            -- Test key: run for 5 seconds then kick them out
+            if isTestKey then
+                task.spawn(function()
+                    task.wait(5)
+                    kickPlayer()
+                    buildKeyUI("Test key expired — you have been kicked out.", Color3.fromRGB(255, 180, 80))
+                end)
+            end
         else
             statusLabel.Text = message
             statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
@@ -358,7 +400,6 @@ local function createKeyUI()
 
     freeBtn.MouseButton1Click:Connect(function()
         screenGui:Destroy()
-
         local success, err = pcall(function()
             loadstring(game:HttpGet("https://raw.githubusercontent.com/Paradisefreedom/AimBot/refs/heads/main/Freemium"))()
         end)
@@ -367,7 +408,6 @@ local function createKeyUI()
         end
     end)
 
-    -- Hover effects
     local function addHover(button, normal, hover)
         button.MouseEnter:Connect(function() button.BackgroundColor3 = hover end)
         button.MouseLeave:Connect(function() button.BackgroundColor3 = normal end)
@@ -376,9 +416,13 @@ local function createKeyUI()
     addHover(getKeyBtn, Color3.fromRGB(40, 40, 48), Color3.fromRGB(50, 50, 60))
     addHover(freeBtn, Color3.fromRGB(35, 35, 42), Color3.fromRGB(45, 45, 55))
 
-    statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+    return screenGui
+end
+
+createKeyUI = function(initialStatus, initialColor)
+    return buildKeyUI(initialStatus, initialColor)
 end
 
 -- ============ INIT ============
 loadActivatedKeys()
-createKeyUI()
+buildKeyUI()
