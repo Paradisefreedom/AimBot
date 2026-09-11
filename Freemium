@@ -1,77 +1,146 @@
-local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
--- The space before "Library.lua" is mandatory for this specific repository's pathing
-local Library = loadstring(game:HttpGet(repo .. " Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(repo .. " addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(repo .. " addons/SaveManager.lua"))()
+-- Services
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui") -- Use game.Players.LocalPlayer.PlayerGui if Testing in Studio
 
-local Window = Library:CreateWindow({
-    Title = 'Private Testing Environment',
-    Center = true,
-    AutoShow = true,
-    TabPadding = 8,
-    MenuFadeTime = 0.2
-})
+-- Main UI Setup
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MinimalAimUI"
+ScreenGui.ResetOnSpawn = false
 
-local Tabs = {
-    Main = Window:CreateTab('Main'),
-    ['UI Settings'] = Window:CreateTab('UI Settings'),
+-- Try to protect UI if in game, otherwise default to PlayerGui
+local player = Players.LocalPlayer
+local targetGui = player:WaitForChild("PlayerGui")
+ScreenGui.Parent = targetGui
+
+-- Main Frame
+local Frame = Instance.new("Frame")
+Frame.Size = UDim2.new(0, 250, 0, 200)
+Frame.Position = UDim2.new(0.05, 0, 0.3, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Frame.BorderSizePixel = 0
+Frame.Active = true
+Frame.Draggable = true -- Allows you to move the UI around for testing
+Frame.Parent = ScreenGui
+
+-- UI Corner for modern smooth edges
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = Frame
+
+-- Title
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.BackgroundTransparency = 1
+Title.Text = "AIM CONFIG"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 18
+Title.Parent = Frame
+
+-- State variables for your aimlock logic
+local Settings = {
+    TargetLock = false,
+    FOV = 70,
+    Smoothness = 5
 }
 
-local AimGroupBox = Tabs.Main:CreateGroupBox('Aim Settings')
+-- 1. TOGGLE BUTTON
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, 210, 0, 35)
+ToggleBtn.Position = UDim2.new(0, 20, 0, 45)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50) -- Default Red (Off)
+ToggleBtn.Text = "Target Lock: OFF"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.Font = Enum.Font.SourceSansSemibold
+ToggleBtn.TextSize = 16
+ToggleBtn.Parent = Frame
 
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(0, 6)
+ToggleCorner.Parent = ToggleBtn
 
-AimGroupBox:AddToggle('AimToggle', {
-    Text = 'Enable Target Lock',
-    Default = false,
-    Tooltip = 'Toggles the camera lock onto targeted players',
-
-    Callback = function(Value)
-        print('[Aim System] Target Lock toggled:', Value)
+ToggleBtn.MouseButton1Click:Connect(function()
+    Settings.TargetLock = not Settings.TargetLock
+    if Settings.TargetLock then
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50) -- Green (On)
+        ToggleBtn.Text = "Target Lock: ON"
+    else
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50) -- Red (Off)
+        ToggleBtn.Text = "Target Lock: OFF"
     end
-})
+    print("Target Lock:", Settings.TargetLock)
+end)
 
+-- 2. FOV SLIDER (Simple Text/Box Input for absolute cleanliness)
+local FOVLabel = Instance.new("TextLabel")
+FOVLabel.Size = UDim2.new(0, 100, 0, 30)
+FOVLabel.Position = UDim2.new(0, 20, 0, 95)
+FOVLabel.BackgroundTransparency = 1
+FOVLabel.Text = "FOV Radius:"
+FOVLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+FOVLabel.Font = Enum.Font.SourceSans
+FOVLabel.TextSize = 16
+FOVLabel.TextXAlignment = Enum.TextXAlignment.Left
+FOVLabel.Parent = Frame
 
-AimGroupBox:AddSlider('FOVSlider', {
-    Text = 'Field of View (FOV)',
-    Default = 100,
-    Min = 10,
-    Max = 500,
-    Rounding = 0,
-    Compact = false,
+local FOVInput = Instance.new("TextBox")
+FOVInput.Size = UDim2.new(0, 100, 0, 30)
+FOVInput.Position = UDim2.new(0, 130, 0, 95)
+FOVInput.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+FOVInput.Text = tostring(Settings.FOV)
+FOVInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+FOVInput.Font = Enum.Font.SourceSans
+FOVInput.TextSize = 16
+FOVInput.Parent = Frame
 
-    Callback = function(Value)
-        print('[Aim System] FOV Radius updated to:', Value)
+local FOVCorner = Instance.new("UICorner")
+FOVCorner.CornerRadius = UDim.new(0, 4)
+FOVCorner.Parent = FOVInput
+
+FOVInput.FocusLost:Connect(function(enterPressed)
+    local num = tonumber(FOVInput.Text)
+    if num then
+        Settings.FOV = math.clamp(num, 1, 360)
+        FOVInput.Text = tostring(Settings.FOV)
+        print("FOV set to:", Settings.FOV)
+    else
+        FOVInput.Text = tostring(Settings.FOV)
     end
-})
+end)
 
+-- 3. SMOOTHNESS SLIDER
+local SmoothLabel = Instance.new("TextLabel")
+SmoothLabel.Size = UDim2.new(0, 100, 0, 30)
+SmoothLabel.Position = UDim2.new(0, 20, 0, 140)
+SmoothLabel.BackgroundTransparency = 1
+SmoothLabel.Text = "Smoothness:"
+SmoothLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+SmoothLabel.Font = Enum.Font.SourceSans
+SmoothLabel.TextSize = 16
+SmoothLabel.TextXAlignment = Enum.TextXAlignment.Left
+SmoothLabel.Parent = Frame
 
-AimGroupBox:AddSlider('SmoothnessSlider', {
-    Text = 'Aim Smoothness',
-    Default = 5,
-    Min = 1,
-    Max = 20,
-    Rounding = 1,
-    Compact = false,
+local SmoothInput = Instance.new("TextBox")
+SmoothInput.Size = UDim2.new(0, 100, 0, 30)
+SmoothInput.Position = UDim2.new(0, 130, 0, 140)
+SmoothInput.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+SmoothInput.Text = tostring(Settings.Smoothness)
+SmoothInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+SmoothInput.Font = Enum.Font.SourceSans
+SmoothInput.TextSize = 16
+SmoothInput.Parent = Frame
 
-    Callback = function(Value)
-        print('[Aim System] Smoothness factor updated to:', Value)
+local SmoothCorner = Instance.new("UICorner")
+SmoothCorner.CornerRadius = UDim.new(0, 4)
+SmoothCorner.Parent = SmoothInput
+
+SmoothInput.FocusLost:Connect(function(enterPressed)
+    local num = tonumber(SmoothInput.Text)
+    if num then
+        Settings.Smoothness = math.clamp(num, 1, 100)
+        SmoothInput.Text = tostring(Settings.Smoothness)
+        print("Smoothness set to:", Settings.Smoothness)
+    else
+        SmoothInput.Text = tostring(Settings.Smoothness)
     end
-})
-
-
-ThemeManager:SetLibrary(Library)
-SaveManager:SetLibrary(Library)
-
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({ 'MenuKeybind' })
-
-ThemeManager:SetFolder('ObsidianPrivateTest')
-SaveManager:SetFolder('ObsidianPrivateTest/configs')
-
-SaveManager:BuildConfigSection(Tabs['UI Settings'])
-ThemeManager:ApplyToTab(Tabs['UI Settings'])
-
-SaveManager:LoadAutoloadConfig()
-
-
-Library:Init()
+end)
